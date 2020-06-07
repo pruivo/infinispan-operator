@@ -59,9 +59,14 @@ type Parameters struct {
 
 // Launch launches operator
 func Launch(params Parameters) {
+	var portOffset int
 	pflag.CommandLine.AddFlagSet(zap.FlagSet())
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	flag.IntVar(&portOffset, "offset", 0, "Port offset for metrics listening ports")
 	flag.Parse()
+
+	metricsPort = metricsPort + int32(portOffset)
+	operatorMetricsPort = operatorMetricsPort + int32(portOffset)
 
 	// The logger instantiated here can be changed to any logger
 	// implementing the logr.Logger interface. This logger will
