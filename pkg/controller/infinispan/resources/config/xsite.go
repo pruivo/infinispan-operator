@@ -46,9 +46,10 @@ func ComputeXSite(infinispan *ispnv1.Infinispan, kubernetes *kube.Kubernetes, se
 	logger.Info("local site service", "service name", siteServiceName, "host", localSiteHost, "port", localSitePort)
 
 	xsite := &config.XSite{
-		Address: localSiteHost,
-		Name:    infinispan.Spec.Service.Sites.Local.Name,
-		Port:    localSitePort,
+		Address:   localSiteHost,
+		Name:      infinispan.Spec.Service.Sites.Local.Name,
+		Port:      localSitePort,
+		Transport: "tunnel",
 	}
 
 	for _, remoteLocation := range infinispan.GetRemoteSiteLocations() {

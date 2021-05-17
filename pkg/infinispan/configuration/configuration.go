@@ -80,10 +80,11 @@ type DNSPing struct {
 }
 
 type XSite struct {
-	Address string       `yaml:"address"`
-	Name    string       `yaml:"name"`
-	Port    int32        `yaml:"port"`
-	Backups []BackupSite `yaml:"backups"`
+	Address   string       `yaml:"address"`
+	Name      string       `yaml:"name"`
+	Port      int32        `yaml:"port"`
+	Transport string       `yaml:"transport"`
+	Backups   []BackupSite `yaml:"backups"`
 }
 
 type BackupSite struct {

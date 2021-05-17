@@ -261,6 +261,32 @@ func (r *ReconcileInfinispan) Reconcile(request reconcile.Request) (reconcile.Re
 		}
 	}
 
+	if infinispan.HasSites() {
+        tunnel := &appsv1.Deployment{}
+		err = r.client.Get(context.TODO(),types.NamespacedName{Namespace: infinispan.Namespace, Name: infinispan.Name}, tunnel)
+		if err != nil && errors.IsNotFound(err) {
+			reqLogger.Info("Configuring the Cross-Site Deployment")
+			deployment, err := r.createGossipRouterTunnel(infinispan)
+			if err != nil {
+				reqLogger.Error(err, "failed to configure new Deployment")
+				return reconcile.Result{}, err
+			}
+			reqLogger.Info("Creating a new Deployment", "Deployment.Name", deployment.Name)
+			err = r.client.Create(context.TODO(), deployment)
+			if err != nil {
+				reqLogger.Error(err, "failed to create new Deployment", "Deployment.Name", deployment.Name)
+				return reconcile.Result{}, err
+			}
+
+			// StatefulSet created successfully
+			reqLogger.Info("End of the Cross-Site tunneling Deployment creation")
+		}
+		if err != nil {
+			reqLogger.Error(err, "failed to get Cross-Site Deployment")
+			return reconcile.Result{}, err
+		}
+	}
+
 	// Reconcile the StatefulSet
 	// Check if the StatefulSet already exists, if not create a new one
 	statefulSet := &appsv1.StatefulSet{}
@@ -1547,6 +1573,10 @@ func PodLabels(name string) map[string]string {
 	return LabelsResource(name, "infinispan-pod")
 }
 
+func TunnelPodLabels(name string) map[string]string {
+	return LabelsResource(name, "infinispan-tunnel-pod")
+}
+
 func ServiceLabels(name string) map[string]string {
 	return map[string]string{
 		"clusterName": name,
@@ -1605,18 +1635,21 @@ func remove(list []string, s string) []string {
 }
 
 // returns the tunnel service
-func (r *ReconcileInfinispan) createGossipRouterTunnel(siteServiceName string, m *infinispanv1.Infinispan, logger logr.Logger) (*corev1.Service, error) {
-	lsService := ispncom.LabelsResource(m.ObjectMeta.Name, "infinispan-tunnel-service")
-	lsTunnel := ispncom.LabelsResource(m.ObjectMeta.Name, "infinispan-tunnel")
+func (r *ReconcileInfinispan) createGossipRouterTunnel(m *infinispanv1.Infinispan) (*appsv1.Deployment, error) {
+	name := m.Name + "-tunnel"
+	reqLogger := log.WithValues("Request.Namespace", m.Namespace, "Request.Name", name)
+	//TODO labels
+	lsTunnel := TunnelPodLabels(m.Name)
 
-	logger.Info("Creating GossipRouter (xsite-tunnel) Deployment")
+	// TODO where to create it?
+	reqLogger.Info("Creating GossipRouter (xsite-tunnel) Deployment")
 	deployment := &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
 			Kind:       "Deployment",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      m.ObjectMeta.Name + "-tunnel",
+			Name:      name,
 			Namespace: m.ObjectMeta.Namespace,
 			Labels:    lsTunnel,
 		},
@@ -1637,7 +1670,7 @@ func (r *ReconcileInfinispan) createGossipRouterTunnel(siteServiceName string, m
 						Ports: []corev1.ContainerPort{
 							{ContainerPort: 8787, Name: "debug", Protocol: corev1.ProtocolTCP},
 							{ContainerPort: 9000, Name: "netcat", Protocol: corev1.ProtocolTCP},
-							{ContainerPort: 12001, Name: "tunnel", Protocol: corev1.ProtocolTCP},
+							{ContainerPort: consts.CrossSitePort, Name: "tunnel", Protocol: corev1.ProtocolTCP},
 						},
 					}},
 				},
@@ -1645,41 +1678,8 @@ func (r *ReconcileInfinispan) createGossipRouterTunnel(siteServiceName string, m
 		},
 	}
 	// Set Infinispan instance as the owner and controller
-	controllerutil.SetControllerReference(m, deployment, r.scheme)
-
-	err := r.client.Create(context.TODO(), deployment)
-	if err != nil && !errors.IsAlreadyExists(err) {
+	if err := controllerutil.SetControllerReference(m, deployment, r.scheme); err != nil {
 		return nil, err
 	}
-
-	logger.Info("Creating GossipRouter (xsite-tunnel) Service")
-	service := &corev1.Service{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Service",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      siteServiceName,
-			Namespace: m.ObjectMeta.Namespace,
-			Labels:    lsService,
-		},
-		// TODO! customize spec.type
-		Spec: corev1.ServiceSpec{
-			Type:     m.Spec.Service.Sites.Local.Expose.Type,
-			Selector: lsTunnel,
-			Ports: []corev1.ServicePort{
-				{Port: 12001, Name: "tunnel", Protocol: corev1.ProtocolTCP},
-			},
-		},
-	}
-
-	// Set Infinispan instance as the owner and controller
-	controllerutil.SetControllerReference(m, service, r.scheme)
-
-	err = r.client.Create(context.TODO(), service)
-	if err != nil && !errors.IsAlreadyExists(err) {
-		return nil, err
-	}
-
-	return service, nil
+	return deployment, nil
 }

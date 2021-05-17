@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 
 	monitoringv1 "github.com/coreos/prometheus-operator/pkg/apis/monitoring/v1"
@@ -402,8 +401,7 @@ func computeServiceExternal(ispn *ispnv1.Infinispan) *corev1.Service {
 
 // computeSiteService compute the XSite service
 func computeSiteService(ispn *ispnv1.Infinispan) *corev1.Service {
-	lsPodSelector := infinispan.PodLabels(ispn.Name)
-	lsPodSelector[consts.CoordinatorPodLabel] = strconv.FormatBool(true)
+	lsPodSelector := infinispan.TunnelPodLabels(ispn.Name)
 
 	exposeSpec := corev1.ServiceSpec{}
 	exposeConf := ispn.Spec.Service.Sites.Local.Expose
