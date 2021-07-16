@@ -9,6 +9,7 @@ import (
 	"os"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -262,19 +263,19 @@ func (r *ReconcileInfinispan) Reconcile(request reconcile.Request) (reconcile.Re
 	}
 
 	if infinispan.HasSites() {
-        tunnel := &appsv1.Deployment{}
-		err = r.client.Get(context.TODO(),types.NamespacedName{Namespace: infinispan.Namespace, Name: infinispan.Name}, tunnel)
+		tunnel := &appsv1.Deployment{}
+		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: infinispan.Namespace, Name: infinispan.Name + "-tunnel"}, tunnel)
 		if err != nil && errors.IsNotFound(err) {
 			reqLogger.Info("Configuring the Cross-Site Deployment")
-			deployment, err := r.createGossipRouterTunnel(infinispan)
+			tunnel, err = r.createGossipRouterTunnel(infinispan)
 			if err != nil {
 				reqLogger.Error(err, "failed to configure new Deployment")
 				return reconcile.Result{}, err
 			}
-			reqLogger.Info("Creating a new Deployment", "Deployment.Name", deployment.Name)
-			err = r.client.Create(context.TODO(), deployment)
+			reqLogger.Info("Creating a new Deployment", "Deployment.Name", tunnel.Name)
+			err = r.client.Create(context.TODO(), tunnel)
 			if err != nil {
-				reqLogger.Error(err, "failed to create new Deployment", "Deployment.Name", deployment.Name)
+				reqLogger.Error(err, "failed to create new Deployment", "Deployment.Name", tunnel.Name)
 				return reconcile.Result{}, err
 			}
 
@@ -589,6 +590,17 @@ func (r *ReconcileInfinispan) destroyResources(infinispan *infinispanv1.Infinisp
 		&appsv1.StatefulSet{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      infinispan.Name,
+				Namespace: infinispan.Namespace,
+			},
+		})
+	if err != nil && !errors.IsNotFound(err) {
+		return err
+	}
+
+	err = r.client.Delete(context.TODO(),
+		&appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      infinispan.Name + "-tunnel",
 				Namespace: infinispan.Namespace,
 			},
 		})
@@ -1448,9 +1460,9 @@ func (r *ReconcileInfinispan) reconcileContainerConf(ispn *infinispanv1.Infinisp
 
 	externalArtifactsUpd, err := applyExternalArtifactsDownload(ispn, &statefulSet.Spec.Template.Spec)
 	if err != nil {
-		return  &reconcile.Result{}, err
+		return &reconcile.Result{}, err
 	}
-	updateNeeded =  externalArtifactsUpd || updateNeeded
+	updateNeeded = externalArtifactsUpd || updateNeeded
 	updateNeeded = applyExternalDependenciesVolume(ispn, &statefulSet.Spec.Template.Spec) || updateNeeded
 
 	// Validate identities Secret name changes
@@ -1637,12 +1649,9 @@ func remove(list []string, s string) []string {
 // returns the tunnel service
 func (r *ReconcileInfinispan) createGossipRouterTunnel(m *infinispanv1.Infinispan) (*appsv1.Deployment, error) {
 	name := m.Name + "-tunnel"
-	reqLogger := log.WithValues("Request.Namespace", m.Namespace, "Request.Name", name)
-	//TODO labels
 	lsTunnel := TunnelPodLabels(m.Name)
 
 	// TODO where to create it?
-	reqLogger.Info("Creating GossipRouter (xsite-tunnel) Deployment")
 	deployment := &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -1666,10 +1675,11 @@ func (r *ReconcileInfinispan) createGossipRouterTunnel(m *infinispanv1.Infinispa
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{{
 						Name:  "gossiprouter",
-						Image: "belaban/gossiprouter:latest",
+						Image: m.ImageName(),
+						// TODO! create a script in the server image to be invoked
+						Command: []string{"java"},
+						Args:    []string{"-cp", "/opt/infinispan/lib/jgroups-4.2.12.Final.jar", "org.jgroups.stack.GossipRouter", "-port", strconv.Itoa(consts.CrossSitePort)},
 						Ports: []corev1.ContainerPort{
-							{ContainerPort: 8787, Name: "debug", Protocol: corev1.ProtocolTCP},
-							{ContainerPort: 9000, Name: "netcat", Protocol: corev1.ProtocolTCP},
 							{ContainerPort: consts.CrossSitePort, Name: "tunnel", Protocol: corev1.ProtocolTCP},
 						},
 					}},

@@ -81,6 +81,7 @@ rules:
   - apps
   resources:
   - statefulsets
+  - deployments
   - deployments/finalizers
   verbs:
   - get
