@@ -132,7 +132,7 @@
         {{ end }}
     </socket-bindings>
     <security>
-        {{ if .Keystore.Password }}
+        {{ if or .Keystore.Password .Truststore.Password .Transport.TLS.KeyStore.Password .Transport.TLS.TrustStore.Password}}
         <credential-stores>
           <credential-store name="credentials" path="credentials.pfx">
             <clear-text-credential clear-text="secret"/>
@@ -188,12 +188,14 @@
                     <ssl>
                         {{ if .Transport.TLS.KeyStore.Path }}
                         <keystore path="{{ .Transport.TLS.KeyStore.Path }}"
-                                    keystore-password="{{ .Transport.TLS.KeyStore.Password }}"
-                                    alias="{{ .Transport.TLS.KeyStore.Alias }}" />
+                                  alias="{{ .Transport.TLS.KeyStore.Alias }}" >
+                            <credential-reference store="credentials" alias="tls_keystore"/>
+                        </keystore>
                         {{ end }}
                         {{ if .Transport.TLS.TrustStore.Path }}
-                        <truststore path="{{ .Transport.TLS.TrustStore.Path }}"
-                                    password="{{ .Transport.TLS.TrustStore.Password }}" />
+                        <truststore path="{{ .Transport.TLS.TrustStore.Path }}">
+                            <credential-reference store="credentials" alias="tls_truststore"/>
+                        </truststore>
                         {{ end }}
                     </ssl>
                 </server-identities>

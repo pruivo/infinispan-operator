@@ -177,6 +177,14 @@ func (r secretRequest) computeAndReconcileAuthProps(serverConf *config.Infinispa
 		cliBatch += "credentials add truststore -c \"" + serverConf.Truststore.Password + "\" -p secret\n"
 	}
 
+	if serverConf.Transport.TLS.KeyStore.Password != "" {
+		cliBatch += "credentials add tls_keystore -c \"" + serverConf.Transport.TLS.KeyStore.Password + "\" -p secret\n"
+	}
+
+	if serverConf.Transport.TLS.TrustStore.Password != "" {
+		cliBatch += "credentials add tls_truststore -c \"" + serverConf.Transport.TLS.TrustStore.Password + "\" -p secret\n"
+	}
+
 	// PEM certs need to be loaded and merget to be used by Infinispan
 	var pem []byte
 	if serverConf.Keystore.Type == "pem" {
