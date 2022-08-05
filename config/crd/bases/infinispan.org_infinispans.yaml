@@ -860,6 +860,9 @@ spec:
                       local:
                         description: InfinispanSitesLocalSpec enables cross-site replication
                         properties:
+                          enableGossipRouter:
+                            description: temporary fix
+                            type: boolean
                           encryption:
                             description: EncryptionSiteSpec enables TLS for cross-site
                               replication

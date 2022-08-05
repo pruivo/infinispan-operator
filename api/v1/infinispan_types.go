@@ -159,6 +159,9 @@ type InfinispanSitesLocalSpec struct {
 	MaxRelayNodes int32 `json:"maxRelayNodes,omitempty"`
 	// +optional
 	Encryption *EncryptionSiteSpec `json:"encryption,omitempty"`
+	// temporary fix
+	// +optional
+	EnableGossipRouter *bool `json:"enableGossipRouter,omitempty"`
 }
 
 type InfinispanSiteLocationSpec struct {

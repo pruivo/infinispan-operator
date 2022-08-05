@@ -1645,9 +1645,21 @@ func (reconciler *InfinispanReconciler) isTypeSupported(kind string) bool {
 }
 
 func (r *infinispanRequest) reconcileCrossSiteReplication() (*ctrl.Result, error) {
-	var gossipRouterTLSSecret *corev1.Secret
 	ispn := r.infinispan
+	if !ispn.IsGossipRouterEnabled() {
+		// user does not need a Gossip Router
+		if ispn.Spec.Replicas == 0 {
+			// shutdown request, ignore
+			return nil, r.update(func() {
+				r.infinispan.SetCondition(infinispanv1.ConditionGossipRouterReady, metav1.ConditionFalse, "Shutdown Requested")
+			})
+		}
+		return nil, r.update(func() {
+			r.infinispan.SetCondition(infinispanv1.ConditionGossipRouterReady, metav1.ConditionTrue, "Gossip Router disabled by request")
+		})
+	}
 
+	var gossipRouterTLSSecret *corev1.Secret
 	if ispn.IsSiteTLSEnabled() {
 		// If TLS is enabled, wait for keystore secrets.
 		// Keystore for Gossip Router

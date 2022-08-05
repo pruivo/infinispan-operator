@@ -868,3 +868,8 @@ func (ispn *Infinispan) IsConfigListenerEnabled() bool {
 func (ispn *Infinispan) GetConfigListenerName() string {
 	return fmt.Sprintf("%s-config-listener", ispn.Name)
 }
+
+func (ispn *Infinispan) IsGossipRouterEnabled() bool {
+	// true if nil to be compatible with old CRs
+	return ispn.Spec.Service.Sites.Local.EnableGossipRouter == nil || *ispn.Spec.Service.Sites.Local.EnableGossipRouter
+}

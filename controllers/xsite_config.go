@@ -29,41 +29,44 @@ const (
 
 // ComputeXSite compute the xsite struct for cross site function
 func ComputeXSite(infinispan *ispnv1.Infinispan, kubernetes *kube.Kubernetes, service *corev1.Service, logger logr.Logger, eventRec record.EventRecorder, ctx context.Context) (*config.XSite, error) {
-	siteServiceName := infinispan.GetSiteServiceName()
-	// make sure the local service is up and running
-	localSiteHost, localPort, err := getCrossSiteServiceHostPort(service, kubernetes, logger, eventRec, "XSiteLocalServiceUnsupported", ctx)
-	if err != nil {
-		logger.Error(err, "error retrieving local x-site service information")
-		return nil, err
-	}
-
-	if localSiteHost == "" {
-		msg := "local x-site service host not yet available"
-		logger.Info(msg)
-		return nil, fmt.Errorf(msg)
-	}
-
-	if service.Spec.Type != corev1.ServiceTypeLoadBalancer {
-		// For load balancer service, we allow a custom port!
-		localPort = consts.CrossSitePort
-	}
-
-	logger.Info("local site service", "service name", siteServiceName, "host", siteServiceName, "port", localPort)
-
 	maxRelayNodes := infinispan.Spec.Service.Sites.Local.MaxRelayNodes
 	if maxRelayNodes <= 0 {
 		maxRelayNodes = 1
 	}
-
-	// use the local/internal service host & port to avoid unecessary hops with external services
 	xsite := &config.XSite{
 		MaxRelayNodes: maxRelayNodes,
 	}
 
-	// add local site first
-	appendBackupSite(infinispan.Spec.Service.Sites.Local.Name, siteServiceName, localPort, xsite)
+	if infinispan.IsGossipRouterEnabled() {
+		siteServiceName := infinispan.GetSiteServiceName()
+		// make sure the local service is up and running
+		localSiteHost, localPort, err := getCrossSiteServiceHostPort(service, kubernetes, logger, eventRec, "XSiteLocalServiceUnsupported", ctx)
+		if err != nil {
+			logger.Error(err, "error retrieving local x-site service information")
+			return nil, err
+		}
 
-	err = searchRemoteSites(infinispan, kubernetes, xsite, logger, eventRec, ctx)
+		if localSiteHost == "" {
+			msg := "local x-site service host not yet available"
+			logger.Info(msg)
+			return nil, fmt.Errorf(msg)
+		}
+
+		if service.Spec.Type != corev1.ServiceTypeLoadBalancer {
+			// For load balancer service, we allow a custom port!
+			localPort = consts.CrossSitePort
+		}
+
+		logger.Info("local site service", "service name", siteServiceName, "host", siteServiceName, "port", localPort)
+
+		// use the local/internal service host & port to avoid unecessary hops with external services
+		// add local site first
+		appendBackupSite(infinispan.Spec.Service.Sites.Local.Name, siteServiceName, localPort, xsite, false)
+	} else {
+		appendBackupSite(infinispan.Spec.Service.Sites.Local.Name, "", 0, xsite, true)
+	}
+
+	err := searchRemoteSites(infinispan, kubernetes, xsite, logger, eventRec, ctx)
 
 	logger.Info("x-site configured", "configuration", xsite)
 	return xsite, err
@@ -71,6 +74,10 @@ func ComputeXSite(infinispan *ispnv1.Infinispan, kubernetes *kube.Kubernetes, se
 
 func searchRemoteSites(infinispan *ispnv1.Infinispan, kubernetes *kube.Kubernetes, xsite *config.XSite, logger logr.Logger, eventRec record.EventRecorder, ctx context.Context) error {
 	for _, remoteLocation := range infinispan.GetRemoteSiteLocations() {
+		if len(remoteLocation.URL) == 0 {
+			appendBackupSite(remoteLocation.Name, "", 0, xsite, true)
+			continue
+		}
 		backupSiteURL, err := url.Parse(remoteLocation.URL)
 		if err != nil {
 			return err
@@ -82,10 +89,10 @@ func searchRemoteSites(infinispan *ispnv1.Infinispan, kubernetes *kube.Kubernete
 					infinispan.GetRemoteSiteClusterName(remoteLocation.Name), infinispan.GetRemoteSiteNamespace(remoteLocation.Name), remoteLocation.Name)
 			}
 			// Add cross-site FQN service name inside the same k8s cluster
-			appendBackupSite(remoteLocation.Name, infinispan.GetRemoteSiteServiceFQN(remoteLocation.Name), 0, xsite)
+			appendBackupSite(remoteLocation.Name, infinispan.GetRemoteSiteServiceFQN(remoteLocation.Name), 0, xsite, false)
 		} else if backupSiteURL.Scheme == consts.StaticCrossSiteUriSchema {
 			port, _ := strconv.ParseInt(backupSiteURL.Port(), 10, 32)
-			appendBackupSite(remoteLocation.Name, backupSiteURL.Hostname(), int32(port), xsite)
+			appendBackupSite(remoteLocation.Name, backupSiteURL.Hostname(), int32(port), xsite, false)
 		} else {
 			// lookup remote service via kubernetes API
 			if err = appendRemoteLocation(ctx, infinispan, &remoteLocation, kubernetes, logger, eventRec, xsite); err != nil {
@@ -138,7 +145,7 @@ func appendKubernetesRemoteLocation(ctx context.Context, infinispan *ispnv1.Infi
 		if err == nil {
 			// Route found
 			logger.Info("Remote route found!", "host", siteRoute.Spec.Host)
-			appendBackupSite(remoteLocationName, siteRoute.Spec.Host, 443, xsite)
+			appendBackupSite(remoteLocationName, siteRoute.Spec.Host, 443, xsite, false)
 			return nil
 		}
 		if err != nil && !errors.IsNotFound(err) {
@@ -177,19 +184,20 @@ func appendKubernetesRemoteLocation(ctx context.Context, infinispan *ispnv1.Infi
 	}
 
 	logger.Info("remote site service", "host", host, "port", port)
-	appendBackupSite(remoteLocationName, host, port, xsite)
+	appendBackupSite(remoteLocationName, host, port, xsite, false)
 	return nil
 }
 
-func appendBackupSite(name, host string, port int32, xsite *config.XSite) {
+func appendBackupSite(name, host string, port int32, xsite *config.XSite, ignoreGossipRouter bool) {
 	if port == 0 {
 		port = consts.CrossSitePort
 	}
 
 	backupSite := config.BackupSite{
-		Address: host,
-		Name:    name,
-		Port:    port,
+		Address:            host,
+		Name:               name,
+		Port:               port,
+		IgnoreGossipRouter: ignoreGossipRouter,
 	}
 
 	xsite.Sites = append(xsite.Sites, backupSite)

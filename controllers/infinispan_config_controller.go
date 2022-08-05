@@ -168,9 +168,11 @@ func GenerateServerConfig(statefulSet string, i *v1.Infinispan, kubernetes *kube
 		// For cross site, reconcile must come before compute, because
 		// we need xsite service details to compute xsite struct
 		siteService := &corev1.Service{}
-		svcName := i.GetSiteServiceName()
-		if result, err := kube.LookupResource(svcName, i.Namespace, siteService, i, c, log, eventRec, ctx); result != nil {
-			return "", "", result, err
+		if i.IsGossipRouterEnabled() {
+			svcName := i.GetSiteServiceName()
+			if result, err := kube.LookupResource(svcName, i.Namespace, siteService, i, c, log, eventRec, ctx); result != nil {
+				return "", "", result, err
+			}
 		}
 
 		var err error

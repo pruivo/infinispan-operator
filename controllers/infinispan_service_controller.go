@@ -141,7 +141,7 @@ func (reconciler *ServiceReconciler) Reconcile(ctx context.Context, request reco
 		reqLogger:         reqLogger,
 	}
 
-	if s.infinispan.HasSites() {
+	if s.infinispan.HasSites() && s.infinispan.IsGossipRouterEnabled() {
 		switch s.infinispan.GetCrossSiteExposeType() {
 		case ispnv1.CrossSiteExposeTypeClusterIP, ispnv1.CrossSiteExposeTypeNodePort, ispnv1.CrossSiteExposeTypeLoadBalancer:
 			// just a single external service
@@ -162,14 +162,24 @@ func (reconciler *ServiceReconciler) Reconcile(ctx context.Context, request reco
 			}
 		}
 	} else {
-		siteService := &corev1.Service{
+		if err := s.Client.Delete(s.ctx, &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      s.infinispan.GetSiteServiceName(),
 				Namespace: s.infinispan.Namespace,
 			},
-		}
-		if err := s.Client.Delete(s.ctx, siteService); err != nil && !errors.IsNotFound(err) {
+		}); err != nil && !errors.IsNotFound(err) {
 			return reconcile.Result{}, err
+		}
+		// delete the route
+		if s.isTypeSupported(consts.ExternalTypeRoute) {
+			if err := s.Client.Delete(s.ctx, &routev1.Route{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      s.infinispan.GetSiteRouteName(),
+					Namespace: s.infinispan.Namespace,
+				},
+			}); err != nil && !errors.IsNotFound(err) {
+				return reconcile.Result{}, err
+			}
 		}
 	}
 
