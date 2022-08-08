@@ -75,31 +75,6 @@ var selfStaticXSiteInfinispan = &ispnv1.Infinispan{
 	},
 }
 
-var selfStaticXSiteErrorInfinispan = &ispnv1.Infinispan{
-	ObjectMeta: metav1.ObjectMeta{
-		Name:      "example-clustera",
-		Namespace: namespace,
-	},
-	Spec: ispnv1.InfinispanSpec{
-		Service: ispnv1.InfinispanServiceSpec{
-			Sites: &ispnv1.InfinispanSitesSpec{
-				Local: ispnv1.InfinispanSitesLocalSpec{
-					Name: "SiteA",
-					Expose: ispnv1.CrossSiteExposeSpec{
-						Type: ispnv1.CrossSiteExposeTypeClusterIP,
-					},
-				},
-				Locations: []ispnv1.InfinispanSiteLocationSpec{
-					{
-						Name:        "SiteB",
-						ClusterName: "example-clustera",
-					},
-				},
-			},
-		},
-	},
-}
-
 var staticXSiteRemoteLocations = &ispnv1.Infinispan{
 	ObjectMeta: metav1.ObjectMeta{
 		Name:      "example-clustera",
@@ -168,13 +143,6 @@ func TestComputeXSiteSelfStatic(t *testing.T) {
 	assert.Equal(t, 2, len(xsite.Sites), "Backup sites number")
 	assert.Equal(t, fmt.Sprintf("%s.%s.svc.cluster.local", "example-clusterb-site", namespace), xsite.Sites[1].Address, "Backup site address")
 	assert.Equal(t, int32(consts.CrossSitePort), xsite.Sites[1].Port, "Backup site port")
-}
-
-func TestComputeXSiteSelfStaticError(t *testing.T) {
-	_, err := ComputeXSite(selfStaticXSiteErrorInfinispan, nil, staticSiteService, logger, nil, context.TODO())
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "unable to link the cross-site service with itself")
-
 }
 
 func TestGetSiteLocationsName(t *testing.T) {

@@ -74,10 +74,6 @@ func ComputeXSite(infinispan *ispnv1.Infinispan, kubernetes *kube.Kubernetes, se
 
 func searchRemoteSites(infinispan *ispnv1.Infinispan, kubernetes *kube.Kubernetes, xsite *config.XSite, logger logr.Logger, eventRec record.EventRecorder, ctx context.Context) error {
 	for _, remoteLocation := range infinispan.GetRemoteSiteLocations() {
-		if len(remoteLocation.URL) == 0 {
-			appendBackupSite(remoteLocation.Name, "", 0, xsite, true)
-			continue
-		}
 		backupSiteURL, err := url.Parse(remoteLocation.URL)
 		if err != nil {
 			return err
@@ -85,8 +81,10 @@ func searchRemoteSites(infinispan *ispnv1.Infinispan, kubernetes *kube.Kubernete
 		if backupSiteURL.Scheme == "" || (backupSiteURL.Scheme == consts.StaticCrossSiteUriSchema && backupSiteURL.Hostname() == "") {
 			// No static location provided. Try to resolve internal cluster service
 			if infinispan.GetRemoteSiteClusterName(remoteLocation.Name) == infinispan.Name && infinispan.GetRemoteSiteNamespace(remoteLocation.Name) == infinispan.Namespace {
-				return fmt.Errorf("unable to link the cross-site service with itself. clusterName '%s' or namespace '%s' for remote location '%s' should be different from the original cluster name or namespace",
-					infinispan.GetRemoteSiteClusterName(remoteLocation.Name), infinispan.GetRemoteSiteNamespace(remoteLocation.Name), remoteLocation.Name)
+				// just add the site's name to relay without looking up remote gossip router.
+				logger.Info("Adding backup without lookup remotely", "Backup Name", remoteLocation.Name)
+				appendBackupSite(remoteLocation.Name, "", 0, xsite, true)
+				continue
 			}
 			// Add cross-site FQN service name inside the same k8s cluster
 			appendBackupSite(remoteLocation.Name, infinispan.GetRemoteSiteServiceFQN(remoteLocation.Name), 0, xsite, false)
