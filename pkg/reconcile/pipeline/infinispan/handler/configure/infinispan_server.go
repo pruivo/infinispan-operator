@@ -86,6 +86,12 @@ func InfinispanServer(i *ispnv1.Infinispan, ctx pipeline.Context) {
 			HeartbeatInterval: configFiles.XSite.HeartbeatInterval,
 			HeartbeatTimeout:  configFiles.XSite.HeartbeatTimeout,
 		}
+		if ctx.operand().UpstreamVersion.GTE(contants.JGroupsTunnelStackMinVersion) {
+			xSite.BaseStack = "udp"
+		} else {
+			xSite.BaseStack = "tunnel"
+		}
+
 		configSpec.XSite = xSite
 		xSite.Sites = make([]config.BackupSite, len(configFiles.XSite.Sites))
 		for i, site := range configFiles.XSite.Sites {

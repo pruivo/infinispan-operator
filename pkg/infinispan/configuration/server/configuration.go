@@ -45,6 +45,7 @@ type XSite struct {
 	HeartbeatEnabled  bool
 	HeartbeatInterval int64
 	HeartbeatTimeout  int64
+	BaseStack         string
 }
 
 type BackupSite struct {

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blang/semver"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -42,6 +43,13 @@ var (
 	}
 
 	JGroupsFastMerge = strings.ToUpper(GetEnvWithDefault("TEST_ENVIRONMENT", "false")) == "TRUE"
+
+	// tunnel stack added since 14.0.26.Final
+	JGroupsTunnelStackMinVersion = semver.Version{
+		Major: 14,
+		Minor: 0,
+		Patch: 26,
+	}
 )
 
 const (
